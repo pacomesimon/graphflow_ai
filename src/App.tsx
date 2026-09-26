@@ -44,7 +44,7 @@ export default function App() {
 
   // Hardware cluster specification
   const [hardware, setHardware] = useState<HardwareSpec>(DEFAULT_HARDWARE);
-  const [viewMode, setViewMode] = useState<ActiveViewMode>('bento');
+  const [viewMode, setViewMode] = useState<ActiveViewMode>('canvas');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   // Dynamic edge height layout spacing (default: 95px, guaranteed >= 32px text annotation height)
   const [minEdgeHeight, setMinEdgeHeight] = useState<number>(95);
