@@ -1,0 +1,6 @@
+{
+  "name": "GraphFlow-AI",
+  "description": "Collaborative deep learning architecture designer and infrastructure optimizer for speculative models up to 1T parameters.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
