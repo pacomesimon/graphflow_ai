@@ -7,7 +7,7 @@
 
 ## 🌟 Executive Overview
 
-Modern frontier deep learning requires navigating a complex trade-off space between architectural decisions (context length, hidden dimension, head configurations, expert counts) and physical hardware constraints (GPU memory capacity, HBM bandwidth, interconnect latencies, pipeline bubbles, and tensor parallelism).
+Modern deep learning requires navigating a complex trade-off space between architectural decisions (context length, hidden dimension, head configurations, expert counts) and physical hardware constraints (GPU memory capacity, HBM bandwidth, interconnect latencies, pipeline bubbles, and tensor parallelism).
 
 Traditionally, engineers and researchers design architectures across fragmented tools: sketching diagrams in general-purpose drawing tools (e.g. Draw.io, Excalidraw), estimating parameters in ad-hoc Python notebooks or spreadsheets, and discovering memory-bandwidth bottlenecks or tensor dimension mismatches only after allocating multi-million-dollar compute clusters.
 
