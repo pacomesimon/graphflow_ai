@@ -28,8 +28,12 @@ export function calculateBlockMetrics(
   const B = runtime.batchSize;
   const S = runtime.contextLength;
   const p = block.parameters || {};
-  const repeats = repetitionMultiplier !== undefined 
-    ? Math.max(1, repetitionMultiplier) 
+  // REVIEWER: When `repetitionMultiplier` is passed, `block.repeatLayers` is completely ignored.
+  // This means a block that has repeatLayers=32 and is also inside a group with repetitions=61
+  // effectively multiplies by 61, losing the standalone repeatLayers value. Ensure callers
+  // always pass one source of truth.
+  const repeats = repetitionMultiplier !== undefined
+    ? Math.max(1, repetitionMultiplier)
     : Math.max(1, block.repeatLayers || 1);
 
   let inShape: TensorShape = incomingShape || { dims: [B, S], label: `[${B}, ${S}]` };
@@ -77,6 +81,9 @@ export function calculateBlockMetrics(
       const dModel = Number(p.dModel) || 8192;
       const numHeads = Number(p.numHeads) || 64;
       const numKVHeads = Number(p.numKVHeads) || 8; // GQA default
+      // REVIEWER: headDim falls back to `round(dModel / numHeads)`. For models where dModel is
+      // not divisible by numHeads (unusual but possible) this silently rounds down, making the
+      // parameter count slightly wrong. A hard assertion or at least a console.warn would help.
       const headDim = Number(p.headDim) || Math.round(dModel / numHeads);
 
       inShape = incomingShape && incomingShape.dims.length >= 3 
@@ -253,7 +260,11 @@ export function calculateBlockMetrics(
   // Operational arithmetic intensity: FLOPs / Memory Traffic (Bytes)
   // For zero-param operations (like op.Add), memory traffic is pure activation tensor read/write (2 inputs read + 1 output write)
   const isZeroParamOp = singleActiveParams === 0;
-  const memoryBytes = isZeroParamOp 
+  // REVIEWER: For parameterised ops the memory traffic is approximated as `activeParams * bytesPerParam`,
+  // which counts weight reads but ignores activation reads/writes. This under-estimates memory
+  // traffic, especially for memory-bound decode where activations dominate. Consider adding
+  // activation traffic: `(singleActiveParams + B * S * outDim) * bytesPerParam`.
+  const memoryBytes = isZeroParamOp
     ? Math.max(1, 3 * singleFlops * bytesPerParam)
     : Math.max(1, (singleActiveParams * bytesPerParam));
   let intensity = 1.0;
@@ -263,6 +274,9 @@ export function calculateBlockMetrics(
     intensity = Math.max(0.2, (singleFlops / memoryBytes));
   } else {
     // Prefill: arithmetic intensity increases with sequence length S and batch B
+    // REVIEWER: S is clamped to 2048 here for the intensity calculation even though the actual
+    // sequence length can be much larger (e.g. 65536 in the 1T preset). This means blocks with
+    // long-context workloads will show unrealistically low intensity values in the roofline view.
     const tokens = B * Math.min(S, 2048);
     intensity = Math.max(1.0, Math.min(300, (tokens * singleFlops) / (memoryBytes * 8)));
   }
@@ -389,10 +403,14 @@ export function computeModelArchitectureSummary(
   });
 
   // Optimizer & Activations
-  const optFactor = spec.distributed.zeroStage === 3 
-    ? (16 / Math.max(1, spec.distributed.numNodes * spec.distributed.gpusPerNode)) 
-    : spec.distributed.zeroStage === 2 
-    ? 8 
+  // REVIEWER: activationGB uses a hard-coded hidden dim of 8192 regardless of the actual spec
+  // (the real dModel can range from 4096 to 16384+). This can cause the memory footprint
+  // summary to diverge from the more accurate calculateMemoryProfile() in scalingMath.ts.
+  // Derive the activation estimate from spec.blocks or pass dModel explicitly.
+  const optFactor = spec.distributed.zeroStage === 3
+    ? (16 / Math.max(1, spec.distributed.numNodes * spec.distributed.gpusPerNode))
+    : spec.distributed.zeroStage === 2
+    ? 8
     : 16;
   const optimizerGB = (totalParams * optFactor) / (1024 ** 3);
   const activationGB = (spec.runtime.batchSize * spec.runtime.contextLength * 8192 * 4) / (1024 ** 3);

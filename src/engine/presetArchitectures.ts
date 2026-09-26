@@ -23,9 +23,14 @@ export interface ModelPreset {
   createSpec: () => ModelArchitectureSpec;
 }
 
+// REVIEWER: `initBlocks` initialises all blocks with zero stats (params: 0, flopsPerToken: 0)
+// and placeholder shapes. The caller is expected to follow up with recomputeSpecMetrics to
+// populate real values. If recomputeSpecMetrics is ever skipped, the spec will silently have
+// zero parameter counts. Consider calling recomputeSpecMetrics inside each createXxxSpec()
+// before returning, or at least add an assertion.
 function initBlocks(
-  rawBlocks: Omit<ModularBlock, 'inputShape' | 'outputShape' | 'stats'>[], 
-  dModel: number, 
+  rawBlocks: Omit<ModularBlock, 'inputShape' | 'outputShape' | 'stats'>[],
+  dModel: number,
   runtime: RuntimeDimensions
 ): ModularBlock[] {
   return rawBlocks.map(b => ({
@@ -937,6 +942,10 @@ function createViTHSpec(): ModelArchitectureSpec {
   return recomputeSpecMetrics(specPartial, DEFAULT_HARDWARE);
 }
 
+// REVIEWER: Each ModelPreset carries a `dimensions` object AND a `createSpec()` factory.
+// These two can go out of sync (e.g. dimensions.numLayers = 128 but createSpec builds 61 layers).
+// Consider deriving the `dimensions` object from the spec returned by createSpec() instead of
+// maintaining it separately.
 export const PRESET_ARCHITECTURES: ModelPreset[] = [
   {
     id: 'trillion-speculative-moe',

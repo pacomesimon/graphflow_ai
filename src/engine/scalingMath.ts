@@ -51,6 +51,9 @@ export function calculateModelParameters(dim: ModelDimensions): {
   const dFfn = dim.intermediateDim;
 
   // Embedding & Un-tied Output Head: Vocab * d * 2 (or 1 if tied)
+  // REVIEWER: Weight-tying (shared embedding & LM-head weights) is common in modern LLMs
+  // (e.g. Llama-3). When tied, this should be `vocabSize * d` (not * 2). Consider adding a
+  // `tieWeights` flag to ModelDimensions or noting the assumption explicitly to the user.
   const embeddingParams = dim.vocabSize * d * 2;
 
   // Multi-Head or Grouped-Query Attention:
@@ -147,6 +150,9 @@ export function calculateMemoryProfile(
       optimizerGB = (totalParams * 16 / dpDegree) / (1024 ** 3);
     } else if (dist.zeroStage === 3) {
       // Weights, Gradients, and Optimizer all sharded
+      // REVIEWER: ZeRO stage 2 and stage 3 produce identical formulas here (both divide by
+      // dpDegree). Stage 3 should additionally shard the weights themselves, yielding
+      // `totalParams * (2 + 16/dpDegree)` bytes total — not `16/dpDegree` bytes.
       const dpDegree = Math.max(1, totalGPUs / (dist.tensorParallelism * dist.pipelineParallelism));
       optimizerGB = (totalParams * 16 / dpDegree) / (1024 ** 3);
     }
@@ -165,6 +171,9 @@ export function calculateMemoryProfile(
   // Standard transformer layer with selective activation checkpointing:
   // ~ B * S * d * (10 + 2 * (Hkv/H)) * bytesPerParam * L
   const actElementsPerToken = dim.dModel * (12 + 2 * (dim.numKVHeads / dim.numHeads));
+  // REVIEWER: The magic divisor 2.5 is an undocumented empirical tuning factor with no
+  // derivation comment. Add a note explaining what it represents (approximate savings from
+  // selective activation checkpointing / recomputation) so future maintainers can adjust it.
   const activationGB = (runtime.batchSize * runtime.contextLength * actElementsPerToken * dim.numLayers * bytesPerParam) / (1024 ** 3 * 2.5);
 
   const totalGB = weightsGB + optimizerGB + activationGB + kvCacheGB;
@@ -178,6 +187,9 @@ export function calculateMemoryProfile(
   const perGpuWeights = weightsGB / (dist.zeroStage === 3 ? totalGPUs : parallelDivisor);
   const perGpuKV = kvCacheGB / tp; // KV heads partitioned across TP
   const perGpuAct = activationGB / (tp * pp);
+  // REVIEWER: `perGpuOpt` divides by 1 (i.e. does NOT shard) when ZeRO > 0. This is inverted —
+  // the ZeRO stages exist specifically to SHARD the optimizer states. The divisor should be
+  // `dpDegree` when zeroStage > 0, and `1` (unsharded) when zeroStage === 0.
   const perGpuOpt = optimizerGB / (dist.zeroStage > 0 ? 1 : totalGPUs);
 
   const perGpuGB = perGpuWeights + perGpuKV + perGpuAct + perGpuOpt;
@@ -229,6 +241,10 @@ export function calculateFLOPs(
   // Backward pass is ~ 2x forward pass = 4 * activeParams + 8 * attention
   const bwdFlopsPerToken = 2 * fwdFlopsPerToken;
 
+  // REVIEWER: Training multiplier of 3 is the standard Chinchilla/Megatron approximation
+  // (fwd=1, bwd=2), but it does not account for optimizer step FLOPs or gradient-checkpointing
+  // recomputation passes. Document the assumption or add a more accurate multiplier (e.g. 4×
+  // with recomputation). Also `bwdFlopsPerToken` is computed but never returned or used.
   const multiplier = runtime.phase === 'training' ? 3 : 1; // fwd + bwd = 3x fwd
   const totalStepFlops = (fwdFlopsPerToken * multiplier) * runtime.batchSize * (runtime.promptTokens + runtime.generationTokens);
 
@@ -288,6 +304,10 @@ export function calculateRooflineModel(
   }
 
   const B = runtime.batchSize;
+  // REVIEWER: S is clamped to 2048 for all non-decode phases, regardless of actual context
+  // length. For prefill with sequences > 2048 (common in long-context workloads) the roofline
+  // arithmetic intensity values will be underestimated. Consider using the real contextLength
+  // or at least surfacing this approximation in the UI tooltip.
   const S = runtime.phase === 'decode' ? 1 : Math.min(runtime.contextLength, 2048); // decode is 1 token per step
   const d = dim.dModel;
   const dFfn = dim.intermediateDim;
@@ -481,6 +501,9 @@ export function calculateCommLatency(
   const totalFlops = 2 * activeParams * B * S;
   const clusterPeakTFlops = totalGPUs * (precision === 'INT8' ? hardware.peakTFlopsFP8 : hardware.peakTFlopsFP16);
   // Real-world MFU (Model Flops Utilization) ~ 45-55%
+  // REVIEWER: MFU is hard-coded at 0.50 here but 0.48 in FlopsEstimatorCard.tsx. Using
+  // different MFU values in different modules produces inconsistent throughput and latency
+  // estimates across views. Extract a shared MFU constant.
   const mfu = 0.50;
   const computeTimeMs = (totalFlops / (clusterPeakTFlops * 1e12 * mfu)) * 1000;
 

@@ -23,6 +23,8 @@ export function convertSpecToFlowGraph(
   // Minimum height guaranteed to be at least the height of the edge's annotation text badge (~32px)
   const MIN_ANNOTATION_TEXT_HEIGHT = 32;
   const userMinEdgeHeight = options?.minEdgeHeight ?? 95;
+  // REVIEWER: MIN_ANNOTATION_TEXT_HEIGHT is also hard-coded as 32 inside CustomEdges.tsx.
+  // Extract this constant to a shared location (e.g. a constants.ts) to keep them in sync.
   const minEdgeHeight = Math.max(MIN_ANNOTATION_TEXT_HEIGHT, userMinEdgeHeight);
 
   // Layout positions: Vertically spaced blocks with horizontal offsets for residual channel
@@ -35,7 +37,13 @@ export function convertSpecToFlowGraph(
   const blockPositions = new Map<string, { x: number; y: number; width: number; height: number }>();
 
   spec.blocks.forEach((block) => {
+    // REVIEWER: The `isOp` predicate is duplicated verbatim in ArchitectureCanvas.tsx
+    // (onNodesChange clamping logic). Centralise it in a helper, e.g. `isOperationBlock(block)`.
     const isOp = block.category === 'operation' || block.moduleType === 'op.Add' || block.moduleType === 'op.ResidualOrigin';
+    // REVIEWER: Block heights (74px / 138px) are magic numbers that must match the actual
+    // rendered DOM heights. If a node's Tailwind classes cause a different height, the bounding
+    // boxes will be incorrect. Consider reading heights from a shared constant or deriving from
+    // the node component itself.
     const height = isOp ? 74 : 138;
     blockPositions.set(block.id, { x: startX, y: currentY, width: blockWidth, height });
     // Vertical edge clearance between successive blocks governed by minEdgeHeight
@@ -176,6 +184,10 @@ export function convertSpecToFlowGraph(
     });
 
     // If edge is a mismatch, flag target node
+    // REVIEWER: This mutates the `data` object of a node that was already pushed into the
+    // `nodes` array. React Flow may not detect the mutation because the object reference
+    // hasn't changed. Prefer building the nodeData with `hasDimensionMismatch` already set
+    // during step 3, or create a new object reference here.
     if (conn.isMismatch) {
       const targetNode = nodes.find(n => n.id === conn.target);
       if (targetNode) {

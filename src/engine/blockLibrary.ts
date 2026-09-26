@@ -1,3 +1,7 @@
+// REVIEWER: PredefinedBlockTemplate and CustomBlockDefinition share the same structure
+// (name, moduleType, category, description, defaultParameters, paramSchema, formulaSummary, color)
+// but are two separate interfaces. Consider merging them or making one extend the other to
+// reduce duplication and allow the library to directly return CustomBlockDefinition[].
 import { CustomBlockDefinition, PyTorchModuleType, BlockCategory } from '../types';
 
 export interface PredefinedBlockTemplate {
@@ -87,6 +91,9 @@ export const PREDEFINED_BLOCK_LIBRARY: PredefinedBlockTemplate[] = [
       { key: 'numKVHeads', label: 'KV Heads (H_kv)', type: 'number', defaultValue: 8, description: 'Set equal to H_q for standard MHA, or 1 for MQA' },
       { key: 'headDim', label: 'Head Dimension', type: 'number', defaultValue: 128 }
     ],
+    // REVIEWER: The formula string shows `(H_q + 2×H_kv + H_q)` which doubles H_q.
+    // The correct factor should be `(2×H_q + 2×H_kv)` or equivalently `2×(H_q + H_kv)`.
+    // This is a display-only string but will mislead anyone reading it.
     formulaSummary: 'P = d_model × (H_q + 2×H_kv + H_q) × d_head | FLOPs = 2P + 4×S×d_model',
     color: 'amber'
   },

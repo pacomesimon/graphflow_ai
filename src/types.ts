@@ -2,6 +2,8 @@
  * GraphFlow-AI - Core Types and Mathematical Simulation Definitions
  */
 
+// REVIEWER: FP8 is included as a PrecisionType but getBytesPerParam treats FP8 and INT8 identically
+// (both return 1 byte). If FP8 is distinct from INT8 in future hardware semantics, split the case.
 export type PrecisionType = 'FP32' | 'FP16' | 'BF16' | 'FP8' | 'INT8' | 'FP4';
 
 export type PyTorchModuleType = 
@@ -49,6 +51,8 @@ export interface ModularBlock {
   name: string;
   moduleType: PyTorchModuleType;
   category: BlockCategory;
+  // REVIEWER: `parameters` is typed as `Record<string, any>` — consider narrowing this to a
+  // discriminated union keyed on moduleType for better type-safety and IDE auto-complete.
   parameters: Record<string, any>;
   repeatLayers?: number;       // Repetition factor (e.g. 32x repeating transformer layers)
   inputShape: TensorShape;
@@ -65,6 +69,7 @@ export interface BlockConnection {
   source: string;
   target: string;
   tensorShape?: TensorShape;
+  // REVIEWER: `dataType` is declared but never read anywhere in the codebase — remove or use it.
   dataType?: string;
   isResidual?: boolean;
   sourceHandle?: string;
@@ -108,6 +113,9 @@ export interface ModelArchitectureSpec {
 export interface CustomBlockDefinition {
   id: string;
   name: string;
+  // REVIEWER: `moduleType` is `string` here but `PyTorchModuleType` in ModularBlock. The cast
+  // `template.moduleType as any` in ArchitectureCanvas is a workaround for this widening; align
+  // the types so the cast can be removed.
   moduleType: string;
   category: BlockCategory;
   description: string;
@@ -163,6 +171,10 @@ export interface DistributedConfig {
   pipelineParallelism: number; // PP degree
   expertParallelism: number;   // EP degree
   zeroStage: 0 | 1 | 2 | 3;    // ZeRO optimizer sharding stage
+  // REVIEWER: `interconnectType` is stored in DistributedConfig but the bandwidth values come
+  // from HardwareSpec (nvlinkBandwidthGBps / networkBandwidthGBps). The two fields are never
+  // cross-validated — a user could select "InfiniBand NDR" while the hardware is Apple M4.
+  // Consider driving bandwidth from the hardware spec alone, or add a validation guard.
   interconnectType: 'NVLink 5' | 'NVLink 4' | 'PCIe Gen5' | 'InfiniBand NDR' | 'RoCE v2';
 }
 
@@ -201,6 +213,10 @@ export interface CommLatencyStats {
 export type Theme = 'light' | 'dark';
 
 // React Flow node data for ModularBlockNode
+// REVIEWER: The index signature `[key: string]: unknown` is required by React Flow v12 but
+// forces every property to be cast when read back — the downstream (targetNode.data as
+// ModularBlockNodeData) casts in graphManager.ts are a direct consequence. Once React Flow
+// removes or relaxes the constraint, remove the index signature.
 export interface ModularBlockNodeData {
   [key: string]: unknown;
   block: ModularBlock;

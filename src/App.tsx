@@ -24,6 +24,8 @@ import { CommBottleneckCard } from './components/profiler/CommBottleneckCard';
 import { useTheme } from './context/ThemeContext';
 
 export default function App() {
+  // REVIEWER: Index [0] is fragile — if preset order changes, the default silently changes.
+  // Consider selecting by a stable id string (e.g. PRESET_ARCHITECTURES.find(p => p.id === '1t-moe')).
   const initialPreset = PRESET_ARCHITECTURES[0]; // Example-1T Fictional MoE
 
   const { theme } = useTheme();
@@ -33,6 +35,9 @@ export default function App() {
   const [spec, setSpec] = useState<ModelArchitectureSpec>(() => initialPreset.createSpec());
 
   // User-created reusable custom blocks (saved in localStorage)
+  // REVIEWER: JSON.parse result is not validated against the CustomBlockDefinition schema —
+  // a schema mismatch after a version upgrade would silently load malformed blocks.
+  // Consider a zod/type-guard validation pass before trusting the parsed data.
   const [customBlocks, setCustomBlocks] = useState<CustomBlockDefinition[]>(() => {
     try {
       const saved = localStorage.getItem('graphflow_custom_blocks');
@@ -65,6 +70,9 @@ export default function App() {
   const hasBlocks = spec.blocks.length > 0;
 
   // Model dimensions synchronized with active spec
+  // REVIEWER: These seven IIFEs each do their own find() over spec.blocks, resulting in up to
+  // 7 separate linear scans per render. Hoist the finds (attn, ffn, moe, emb) once outside
+  // the object literal and reuse the references.
   const currentDim: ModelDimensions = {
     dModel: (() => {
       if (!hasBlocks) return 0;
@@ -120,6 +128,10 @@ export default function App() {
   const [showSyncBadge, setShowSyncBadge] = useState(false);
 
   // Re-render and update the entire computational analysis pipeline
+  // REVIEWER: The cleanup function returned inside setSpec updater (return () => clearTimeout)
+  // is NOT used by React's setState — the cleanup only applies when returned from useEffect.
+  // The timer is never cancelled if the component unmounts between trigger and expiry.
+  // Move the setTimeout + cleanup into a useEffect or use a ref to store the timer id.
   const handleReRender = useCallback(() => {
     setSpec((prevSpec) => {
       const recomputed = recomputeSpecMetrics(prevSpec, hardware);
@@ -137,6 +149,9 @@ export default function App() {
   };
 
   // Import JSON specification
+  // REVIEWER: Only `blocks` array existence is checked — `connections`, `runtime`, `precision`,
+  // and `distributed` are never validated and will throw deep inside recomputeSpecMetrics if
+  // the JSON omits them. Add a minimal structural guard before calling recomputeSpecMetrics.
   const handleImportConfig = (jsonStr: string) => {
     try {
       const parsed = JSON.parse(jsonStr);
@@ -212,6 +227,10 @@ export default function App() {
     });
 
     // Also synchronize repetitionGroups if present
+    // REVIEWER: This overwrites ALL group repetition counts with the single numLayers value.
+    // If the spec has multiple groups with different layer counts this is destructive — all
+    // groups collapse to the same repetition count. Confirm this is intentional, or only
+    // update groups proportionally / selectively.
     const updatedGroups = (spec.repetitionGroups || []).map(g => ({
       ...g,
       repetitions: newDim.numLayers
