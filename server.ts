@@ -14,7 +14,7 @@ const PORT = 3000;
 
 app.use(express.json({ limit: '10mb' }));
 
-// Shared Gemini client with telemetry header
+// Shared LLM client with telemetry header
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
   httpOptions: {
